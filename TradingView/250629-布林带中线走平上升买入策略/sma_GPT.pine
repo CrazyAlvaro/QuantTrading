@@ -1,0 +1,63 @@
+
+// 回测在 美中嘉和 HK 2453 20周期均线 下降10周期 上升买入，在 60min K线 效果非常好
+
+
+//@version=6
+strategy("SMA反转买入策略", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+smaLen_5 = 5
+smaLen_10 = 10
+smaLen_80 = 80
+declineBars = 10
+
+sma_5 = ta.sma(close, smaLen_5)
+sma_10 = ta.sma(close, smaLen_10)
+
+// 60min 20 周期，就是 15min 80周期
+sma_20 = ta.sma(close, smaLen_80)
+
+// === 连续下降判断 ===
+smaDeclining = true
+for i = 1 to declineBars
+    smaDeclining := sma_20[i] < sma_20[i + 1] and smaDeclining
+
+// === SMA开始上升 ===
+smaTurningUp = sma_20 > sma_20[1]
+
+// === 买入条件 ===
+buyCondition = smaDeclining and smaTurningUp
+
+// === 是否持仓 ===
+inPosition = strategy.position_size > 0
+
+// === 止损：连续3根K线低于SMA（且当前持仓中）===
+stopLoss = inPosition and close < sma_20 and close[1] < sma_20[1] and close[2] < sma_20[2]
+
+// === 记录持仓中的最高价（用于回落止盈）===
+var float peakPrice = na
+if buyCondition
+    peakPrice := high
+else if inPosition
+    peakPrice := math.max(peakPrice, high)
+else
+    peakPrice := na
+
+takeProfit = inPosition and peakPrice > 0 and close < peakPrice * 0.98
+
+// === 策略执行 ===
+if buyCondition
+    strategy.entry("Buy", strategy.long)
+
+if stopLoss
+    strategy.close("Buy", comment="止损")
+
+if takeProfit
+    strategy.close("Buy", comment="止盈")
+
+// === 可视化标记（只在持仓时画止盈止损）===
+plot(sma_5, color=color.white, linewidth=1, title="SMA5")
+plot(sma_10, color=color.red, linewidth=1, title="SMA10")
+plot(sma_20, color=color.orange, linewidth=1, title="SMA20")
+plotshape(buyCondition, title="Buy Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="Buy")
+plotshape(stopLoss, title="Stop Loss", location=location.abovebar, color=color.red, style=shape.labeldown, text="SL")
+plotshape(takeProfit, title="Take Profit", location=location.abovebar, color=color.blue, style=shape.labeldown, text="TP")

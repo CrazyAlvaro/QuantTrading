@@ -1,0 +1,59 @@
+//@version=5
+strategy("SMA20 Reversal Strategy", overlay=true, margin_long=100, margin_short=100)
+
+// 输入参数
+length = input(20, title="SMA周期")
+minDeclineBars = input(10, title="最小连续下降周期数")
+stopLossBars = input(3, title="止损连续周期数")
+profitExitPercent = input(2.0, title="止盈回落百分比") / 100
+
+// 计算20周期SMA
+sma20 = ta.sma(close, length)
+
+// 判断SMA是否下降 (当前值小于前一个值)
+isDeclining = sma20 < sma20[1]
+
+// 计算连续下降的周期数
+var consecutiveDecline = 0
+consecutiveDecline := isDeclining ? consecutiveDecline + 1 : 0
+
+// 买入条件: 连续下降超过minDeclineBars后首次上升
+buyCondition = consecutiveDecline >= minDeclineBars and sma20 > sma20[1] and sma20[1] <= sma20[2]
+
+// 止损条件: 连续stopLossBars个周期收盘价低于SMA20
+var belowSmaCount = 0
+belowSmaCount := close < sma20 ? belowSmaCount + 1 : 0
+stopLossCondition = belowSmaCount >= stopLossBars
+
+// 跟踪最高价和止盈条件
+var float highestHigh = na
+var bool inTrade = false
+
+if buyCondition and not inTrade
+    highestHigh := high
+    inTrade := true
+else if inTrade
+    if high > highestHigh
+        highestHigh := high
+    // 止盈条件: 从最高点回落profitExitPercent
+    takeProfitCondition = (highestHigh - close) / highestHigh >= profitExitPercent
+
+    if takeProfitCondition or stopLossCondition
+        inTrade := false
+        belowSmaCount := 0
+
+// 执行交易
+if buyCondition and not inTrade
+    strategy.entry("Buy", strategy.long)
+
+if inTrade and (stopLossCondition or takeProfitCondition)
+    strategy.close("Buy")
+
+// 绘图
+plot(sma20, color=color.blue, title="SMA 20")
+bgcolor(buyCondition ? color.green : na, transp=70)
+bgcolor(stopLossCondition ? color.red : na, transp=70)
+bgcolor(takeProfitCondition and inTrade ? color.orange : na, transp=70)
+
+// 标记买入信号
+plotshape(buyCondition, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, title="Buy Signal")

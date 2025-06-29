@@ -1,0 +1,66 @@
+//@version=5
+strategy("SMA趋势反转交易策略", overlay=true)
+
+// 输入参数
+smaLength = input(20, "SMA周期")
+consecutiveDownPeriods = input(10, "SMA连续下降周期数")
+stopLossPeriods = input(3, "止损连续周期数")
+takeProfitDrop = input(2.0, "止盈回落百分比", type=float)
+
+// 计算20周期SMA
+sma = ta.sma(close, smaLength)
+plot(sma, "SMA", color=color.blue)
+
+// 检测SMA方向变化
+smaIsRising = sma > sma[1]
+smaIsFalling = sma < sma[1]
+
+// 统计SMA连续下降周期数
+var int consecutiveDownCount = 0
+if smaIsFalling
+    consecutiveDownCount := consecutiveDownCount + 1
+else
+    consecutiveDownCount := 0
+
+// 买入监测触发条件：SMA连续下降超过10个周期
+buyMonitorTriggered = consecutiveDownCount > consecutiveDownPeriods
+
+// 买入条件：SMA第一次开始上升
+buyCondition = buyMonitorTriggered and smaIsRising and not smaIsRising[1]
+
+// 止损条件：连续3个周期收盘价低于SMA
+closeBelowSMA = close < sma
+var int consecutiveBelowSMACount = 0
+if closeBelowSMA
+    consecutiveBelowSMACount := consecutiveBelowSMACount + 1
+else
+    consecutiveBelowSMACount := 0
+
+stopLossCondition = consecutiveBelowSMACount >= stopLossPeriods
+
+// 止盈条件：从前期最高点回落2%
+var float localHigh = 0.0
+if close > localHigh
+    localHigh := close
+
+priceDropFromHigh = (localHigh - close) / localHigh * 100
+takeProfitCondition = priceDropFromHigh >= takeProfitDrop
+
+// 重置局部高点
+if buyCondition
+    localHigh := close
+
+// 执行策略
+if buyCondition
+    strategy.entry("买入", strategy.long)
+
+if strategy.position_size > 0
+    if stopLossCondition
+        strategy.close("买入", comment="止损")
+    if takeProfitCondition
+        strategy.close("买入", comment="止盈")
+
+// 绘制信号点
+plotshape(buyCondition, title="买入信号", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(stopLossCondition, title="止损信号", style=shape.xcross, location=location.abovebar, color=color.red, size=size.small)
+plotshape(takeProfitCondition, title="止盈信号", style=shape.diamond, location=location.abovebar, color=color.orange, size=size.small)
